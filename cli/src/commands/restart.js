@@ -1,6 +1,6 @@
 const chalk = require('chalk');
 const ora = require('ora');
-const { runDockerCompose } = require('../utils/docker');
+const { runDockerCompose, waitForContainers } = require('../utils/docker');
 const { getServicePath } = require('../utils/config');
 const fs = require('fs').promises;
 
@@ -29,7 +29,14 @@ async function restart(service, options = {}) {
     // Start the service
     spinner.text = `Starting ${service}...`;
     await runDockerCompose(servicePath, 'up', ['-d']);
-    
+
+    spinner.text = `Waiting for ${service} to become healthy...`;
+    const ready = await waitForContainers(servicePath);
+    if (!ready) {
+      spinner.warn(chalk.yellow(`${service} restarted but is still starting up. Check: easy logs ${service}`));
+      return;
+    }
+
     spinner.succeed(chalk.green(`✓ ${service} has been restarted!`));
     
     console.log(chalk.cyan(`\nService: ${service}`));

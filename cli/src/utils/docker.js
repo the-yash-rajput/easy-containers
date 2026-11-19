@@ -1,4 +1,6 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const run = (cmd, args, cwd, withStderr = false) => new Promise((res, rej) =>
+    execFile(cmd, args, { cwd }, (e, out, err) => (e ? rej(e) : res((withStderr ? out + err : out).trim()))));
 const chalk = require('chalk');
 
 /**
@@ -131,10 +133,30 @@ async function verifyDockerEnvironment() {
   }
 }
 
+// ponytail: fixed 30s poll; make it a flag if slow services (elasticsearch, gitlab) need longer
+async function waitForContainers(cwd, timeoutMs = 30000) {
+  const ids = (await run('docker-compose', ['ps', '-a', '-q'], cwd)).split('\n').filter(Boolean);
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const states = await Promise.all(ids.map(id => run('docker', ['inspect', '-f',
+      '{{.Name}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}|{{.State.ExitCode}}', id])));
+    const parsed = states.map(s => { const [name, status, health, code] = s.split('|'); return { name: name.slice(1), status, health, code }; });
+    const dead = parsed.find(c => c.status === 'exited' || c.status === 'dead' || c.status === 'restarting' || c.health === 'unhealthy');
+    if (dead) {
+      const logs = await run('docker', ['logs', '--tail', '20', dead.name], cwd, true).catch(() => '');
+      throw new Error(`${dead.name} is ${dead.health || dead.status} (exit ${dead.code})\n${logs}`);
+    }
+    if (parsed.every(c => c.status === 'running' && c.health !== 'starting')) return true;
+    if (Date.now() > deadline) return false; // still starting: caller warns instead of failing
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
 module.exports = {
   runDockerCompose,
   isDockerRunning,
   isDockerComposeInstalled,
   getDockerVersion,
-  verifyDockerEnvironment
+  verifyDockerEnvironment,
+  waitForContainers
 };

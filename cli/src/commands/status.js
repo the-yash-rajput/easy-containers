@@ -12,7 +12,7 @@ async function status(options = {}) {
   try {
     // Get all running containers
     const { stdout } = await execAsync(
-      'docker ps --format "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"'
+      'docker ps -a --filter label=com.docker.compose.project "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"'
     );
 
     spinner.stop();
@@ -61,7 +61,7 @@ async function status(options = {}) {
 
     console.log(chalk.bold.cyan('\n🐳 Container Status:\n'));
     console.log(table.toString());
-    console.log(chalk.cyan(`\nTotal: ${containers.length} container(s) running\n`));
+    console.log(chalk.cyan(`\nTotal: ${containers.length} container(s) shown\n`));
 
     if (options.verbose) {
       console.log(chalk.gray('\n💡 Tip: Use "easy logs <service>" to view container logs\n'));
